@@ -322,6 +322,8 @@ class AbstractSearch(object):
             self._init_fields()
             for rf in return_fields:
                 if rf not in self._fields:
+                    if type(rf) is tuple:
+                        continue
                     if rf in self._map_wfs_source_df:
                         raise InvalidFieldError(
                             "Unknown return field: '%s'. Did you mean '%s'?"

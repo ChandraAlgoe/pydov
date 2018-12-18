@@ -274,7 +274,7 @@ class AbstractDovType(AbstractCommon):
 
         self.data['pkey_%s' % self.typename] = self.pkey
 
-    def _parse_xml_data(self):
+    def _parse_xml_data(self, xml_injected_fields=None):
         """Get remote XML data for this DOV object, parse the raw XML and
         save the results in the data object.
 
@@ -298,6 +298,15 @@ class AbstractDovType(AbstractCommon):
                     namespace=None,
                     returntype=field.get('type', None)
                 )
+
+            if xml_injected_fields is not None:
+                for field in xml_injected_fields:
+                    self.data[field[0]] = self._parse(
+                        func=tree.findtext,
+                        xpath=field[1],
+                        namespace=None,
+                        returntype='string'
+                    )
 
             self._parse_subtypes(xml)
         except XmlParseError:
@@ -422,7 +431,10 @@ class AbstractDovType(AbstractCommon):
                 for st in cls._subtypes:
                     fields.extend([f for f in st.get_field_names() if f in
                                    return_fields])
+            fields.extend([f[0] for f in return_fields if type(f) is tuple])
             for rf in return_fields:
+                if type(rf) is tuple:
+                    continue
                 if rf not in fields:
                     raise InvalidFieldError("Unknown return field: '%s'" % rf)
         return fields
@@ -573,13 +585,26 @@ class AbstractDovType(AbstractCommon):
             search operation.
 
         """
+        if return_fields is not None:
+            xml_injected_fields = [f for f in return_fields
+                                   if type(f) is tuple]
+        else:
+            xml_injected_fields = []
+
+        if len(xml_injected_fields) > 0:
+            self.data.update(dict(
+                zip([f[0] for f in return_fields if type(f) is tuple],
+                    [AbstractDovType._UNRESOLVED] * len(xml_injected_fields))
+            ))
+
         fields = self.get_field_names(return_fields)
         ownfields = self.get_field_names(include_subtypes=False,
                                          include_wfs_injected=True)
-        subfields = [f for f in fields if f not in ownfields]
+        subfields = [f for f in fields if f not in ownfields
+                     and f not in [xf[0] for xf in xml_injected_fields]]
 
-        if len(subfields) > 0:
-            self._parse_xml_data()
+        if len(subfields) > 0 or len(xml_injected_fields) > 0:
+            self._parse_xml_data(xml_injected_fields)
 
         datadicts = []
         datarecords = []
@@ -599,7 +624,7 @@ class AbstractDovType(AbstractCommon):
 
         for d in datarecords:
             if self._UNRESOLVED in d:
-                self._parse_xml_data()
+                self._parse_xml_data(xml_injected_fields)
                 datarecords = self.get_df_array(return_fields)
                 break
 
